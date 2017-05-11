@@ -11,10 +11,13 @@ class App:
         self.logger = Logger(LOG_FILE)
         self.iface = Interface(BRUTE_FORCE, self.logger)
 
-        self.iface.crack_password()
+        try:
+            self.iface.crack_password()
+        except KeyboardInterrupt:
+            print()
 
+        self.iface.cleanup()
         self.logger.cleanup()
-
 
 if __name__ == "__main__":
     App()

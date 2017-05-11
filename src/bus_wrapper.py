@@ -1,7 +1,9 @@
 #! /usr/bin/env python3
 import smbus
+import time
 
 BYTE_LENGTH = 8
+HARDWARE_WAIT = 0.010 # 10ms
 
 
 class _BusAddrWrapper:
@@ -18,11 +20,15 @@ class _BusAddrWrapper:
         assert isinstance(value, bool)
         self._values[i] = value
 
+    def __len__(self):
+        return BYTE_LENGTH
+
     def write_byte(self):
         wb = 0
         for i in range(BYTE_LENGTH):
             wb |= int(self._values[i]) << i
         self._bus.write_byte(self._addr, wb)
+        time.sleep(HARDWARE_WAIT)
 
     def read_byte(self):
         rb = self._bus.read_byte(self._addr)
