@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 from bus_wrapper import BusWrapper
+import RPi.GPIO as gpio
 import time
 import threading
 from timeout import Timeout
@@ -109,6 +110,13 @@ class BusAccessor:
 class Interface:
     def __init__(self, brute_force, logger):
         self.logger = logger
+
+        if USE_INTERRUPT:
+            gpio.setwarnings(False)
+            gpio.setmode(gpio.BCM)
+            gpio.setup(INTERRUPT_GPIO, gpio.IN, pull_up_down=gpio.PUD_UP)
+            gpio.add_event_detect(
+                9, gpio.FALLING, callback=self.interrupt_line_active, bouncetime=20)
 
         self.bus = BusAccessor()
         self.brute = brute_force
