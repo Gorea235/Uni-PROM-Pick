@@ -135,7 +135,7 @@ class Interface:
         time.sleep(DIGIT_TEST_WAIT_TIME)
         for i in range(9, -1, -1):
             self.disp_digit(str(i))
-            time.sleep(DIGIT_TEST_WAIT_TIME)
+            #time.sleep(DIGIT_TEST_WAIT_TIME)
         self.disp_digit(None)
         input("Press enter to start the crack")
         if self.brute:
@@ -261,12 +261,14 @@ class Interface:
         self.led_waiter.set()
 
     def disp_digit(self, digit):
+        print("displayed digit", digit)
+        return
         if digit is None:
-            for i in len(self.bus.ddisp):
+            for i in range(len(self.bus.ddisp)):
                 self.bus.ddisp[i] = False
         else:
-            for i in len(self.bus.ddisp):
-                self.bus.ddisp[i] = DIGIT_DISP_CONVERT[i]
+            for i in range(len(self.bus.ddisp)):
+                self.bus.ddisp[i] = DIGIT_DISP_CONVERT[digit][i]
         self.bus.ddisp.write_byte()
 
     def cleanup(self):
