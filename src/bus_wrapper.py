@@ -35,6 +35,9 @@ class _BusAddrWrapper:
         for i in range(BYTE_LENGTH):
             self._values[i] = bool((1 << i) & rb)
 
+    def __repr__(self):
+        return repr(self._values)
+
 
 class BusWrapper:
     def __init__(self, n):

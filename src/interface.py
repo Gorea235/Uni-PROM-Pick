@@ -8,7 +8,7 @@ import os
 
 BUS_ID = 1
 BUS_ADDR_PICK = 0x38
-BUS_ADDR_DDISP = 0x24  # ????
+BUS_ADDR_DDISP = 0x21  # ????
 # [row][column]
 DIGIT_CONVERT = [
     ["1", "2", "3"],
@@ -22,13 +22,14 @@ DIGIT_ID_TABLE = {}
 for r in range(N_ROWS):
     for c in range(N_COLS):
         DIGIT_ID_TABLE[DIGIT_CONVERT[r][c]] = (r, c)
-USE_INTERRUPT = False
+USE_INTERRUPT = True
 INTERRUPT_GPIO = 17
 PASSWORD_LENGTH = 4
-LED_WAIT_TIME = 1
+LED_WAIT_TIME = 0.5
 PREVIOUS_WAIT_TIME = 0.5
-DIGIT_CLEAR_TIME = 1
+DIGIT_CLEAR_TIME = 0.5
 BUS_SETTLE_TIME = 0.005
+DIGIT_INPUT_RESET_TIME = 3.1
 
 BRUTE_FORCE_PRESEARCH_LIST = "brute_force_search.dat"
 DIGIT_DISP_CONVERT = {
@@ -46,7 +47,7 @@ DIGIT_DISP_CONVERT = {
     "*": [True,  False, True,  False, True,  False, True,  True],
     "#": [False, True,  False, False, False, True,  False, True]
 }
-DIGIT_TEST_WAIT_TIME = 1
+DIGIT_TEST_WAIT_TIME = 0.6
 
 
 class BusAccessor:
@@ -112,11 +113,13 @@ class Interface:
         self.logger = logger
 
         if USE_INTERRUPT:
+            global LED_WAIT_TIME
+            LED_WAIT_TIME = 1
             gpio.setwarnings(False)
             gpio.setmode(gpio.BCM)
             gpio.setup(INTERRUPT_GPIO, gpio.IN, pull_up_down=gpio.PUD_UP)
             gpio.add_event_detect(
-                9, gpio.FALLING, callback=self.interrupt_line_active, bouncetime=20)
+                INTERRUPT_GPIO, gpio.FALLING, callback=self.interrupt_line_active, bouncetime=200)
 
         self.bus = BusAccessor()
         self.brute = brute_force
@@ -135,26 +138,37 @@ class Interface:
         time.sleep(DIGIT_TEST_WAIT_TIME)
         for i in range(9, -1, -1):
             self.disp_digit(str(i))
-            #time.sleep(DIGIT_TEST_WAIT_TIME)
+            time.sleep(DIGIT_TEST_WAIT_TIME)
         self.disp_digit(None)
         input("Press enter to start the crack")
         if self.brute:
             search_list = []
             pwd_tbl = {}
+            print("Attempting to load default search passwords")
             if os.path.isfile(BRUTE_FORCE_PRESEARCH_LIST):
+                print("File found, reading...")
                 with open(BRUTE_FORCE_PRESEARCH_LIST) as f:
                     for l in f:
                         search_list.append(l.strip())
                         pwd_tbl[search_list[-1]] = True
+            else:
+                print("File not found, skipping...")
+            print("Generating password search list...")
             search_list += self.generate_password_list("", pwd_tbl)
+            print("Password search list generated with {} items".format(len(search_list)))
             for pwd in search_list:
+                print("Testing password", pwd)
+                self.bus.pick_def()
+                self.bus.pick.write_byte()
+                time.sleep(1.5)
                 for c in pwd:
                     self.bus.pick_def()
+                    self.bus.pick.write_byte()
                     time.sleep(DIGIT_CLEAR_TIME)
                     self.bus.pick_def()
-                    self.bus.pick_setrow(DIGIT_ID_TABLE[c][0])
-                    self.bus.pick_setcol(DIGIT_ID_TABLE[c][1])
-                    self.bus.write_byte()
+                    self.bus.pick_setrow(DIGIT_ID_TABLE[c][0], True)
+                    self.bus.pick_setcol(DIGIT_ID_TABLE[c][1], True)
+                    self.bus.pick.write_byte()
                     time.sleep(PREVIOUS_WAIT_TIME)
                 if not self.wait_for_led():
                     print("LED not active after password injection, correct one found")
@@ -173,19 +187,25 @@ class Interface:
                     for c in range(N_COLS):
                         # input("> do next digit test ('{}')({},{}) <".format(DIGIT_CONVERT[r][c], r,c))
                         self.bus.pick_def()
-                        time.sleep(DIGIT_CLEAR_TIME)
+                        self.bus.pick.write_byte()
+                        # time.sleep(DIGIT_CLEAR_TIME)
+                        time.sleep(DIGIT_INPUT_RESET_TIME)
+                        # print(found)
                         for f in found:
+                            self.bus.pick_def()
                             self.bus.pick_setrow(f[0], True)
                             self.bus.pick_setcol(f[1], True)
                             self.bus.pick.write_byte()
                             # print("wrote found byte")
                             time.sleep(PREVIOUS_WAIT_TIME)
                             self.bus.pick_def()
+                            self.bus.pick.write_byte()
                             time.sleep(DIGIT_CLEAR_TIME)
                         self.bus.pick_def()
                         self.bus.pick_setrow(r, True)
                         self.bus.pick_setcol(c, True)
                         self.bus.pick.write_byte()
+                        time.sleep(PREVIOUS_WAIT_TIME)
                         # input("> start LED wait <")
                         if not self.wait_for_led():
                             # print("LED not active, added digit '{}'".format(
@@ -195,9 +215,11 @@ class Interface:
                                 "digit '{}' found at {},{}", DIGIT_CONVERT[r][c], r, c)
                             self.disp_digit(DIGIT_CONVERT[r][c])
                             found_digit = True
+                            # time.sleep(DIGIT_INPUT_RESET_TIME)
                             break
                         # else:
                             # print("LED was active")
+                            # time.sleep(DIGIT_INPUT_RESET_TIME)
                     if found_digit:
                         break
                 if not found_digit:
@@ -256,19 +278,22 @@ class Interface:
         if USE_INTERRUPT:
             self.led_waiter.set()
 
-    def interrupt_line_active(self):
+    def interrupt_line_active(self, *args):
         # the interrupt line handler
-        self.led_waiter.set()
+        if not self.led_waiter.is_set():
+            self.led_waiter.set()
+            print("interrupt fired")
 
-    def disp_digit(self, digit):
-        print("displayed digit", digit)
-        return
+    def disp_digit(self, digit, text="found digit"):
+        print(text, digit)
+        # return
         if digit is None:
             for i in range(len(self.bus.ddisp)):
                 self.bus.ddisp[i] = False
         else:
             for i in range(len(self.bus.ddisp)):
                 self.bus.ddisp[i] = DIGIT_DISP_CONVERT[digit][i]
+        # print(self.bus.ddisp)
         self.bus.ddisp.write_byte()
 
     def cleanup(self):
